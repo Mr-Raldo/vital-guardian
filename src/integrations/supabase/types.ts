@@ -14,16 +14,253 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      alert_acknowledgments: {
+        Row: {
+          acknowledged_at: string
+          acknowledged_by: string
+          id: string
+          ip_address: string | null
+          patient_id: string
+          user_agent: string | null
+          vital_id: string
+        }
+        Insert: {
+          acknowledged_at?: string
+          acknowledged_by: string
+          id?: string
+          ip_address?: string | null
+          patient_id: string
+          user_agent?: string | null
+          vital_id: string
+        }
+        Update: {
+          acknowledged_at?: string
+          acknowledged_by?: string
+          id?: string
+          ip_address?: string | null
+          patient_id?: string
+          user_agent?: string | null
+          vital_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_acknowledgments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_acknowledgments_vital_id_fkey"
+            columns: ["vital_id"]
+            isOneToOne: false
+            referencedRelation: "vitals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      patients: {
+        Row: {
+          admission_date: string
+          assigned_nurse_id: string | null
+          bed_number: string | null
+          created_at: string
+          date_of_birth: string
+          diagnosis: string | null
+          discharge_date: string | null
+          full_name: string
+          gender: string
+          id: string
+          id_number: string | null
+          is_active: boolean
+          notes: string | null
+          updated_at: string
+          ward: string | null
+        }
+        Insert: {
+          admission_date?: string
+          assigned_nurse_id?: string | null
+          bed_number?: string | null
+          created_at?: string
+          date_of_birth: string
+          diagnosis?: string | null
+          discharge_date?: string | null
+          full_name: string
+          gender: string
+          id?: string
+          id_number?: string | null
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+          ward?: string | null
+        }
+        Update: {
+          admission_date?: string
+          assigned_nurse_id?: string | null
+          bed_number?: string | null
+          created_at?: string
+          date_of_birth?: string
+          diagnosis?: string | null
+          discharge_date?: string | null
+          full_name?: string
+          gender?: string
+          id?: string
+          id_number?: string | null
+          is_active?: boolean
+          notes?: string | null
+          updated_at?: string
+          ward?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      treatments: {
+        Row: {
+          created_at: string
+          description: string | null
+          end_date: string | null
+          id: string
+          patient_id: string
+          prescribed_by: string | null
+          start_date: string
+          status: string
+          treatment_name: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          patient_id: string
+          prescribed_by?: string | null
+          start_date?: string
+          status?: string
+          treatment_name: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          patient_id?: string
+          prescribed_by?: string | null
+          start_date?: string
+          status?: string
+          treatment_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatments_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      vitals: {
+        Row: {
+          blood_glucose: number | null
+          diastolic_bp: number | null
+          heart_rate: number | null
+          id: string
+          is_critical: boolean
+          oxygen_saturation: number | null
+          patient_id: string
+          recorded_at: string
+          respiratory_rate: number | null
+          systolic_bp: number | null
+          temperature: number | null
+        }
+        Insert: {
+          blood_glucose?: number | null
+          diastolic_bp?: number | null
+          heart_rate?: number | null
+          id?: string
+          is_critical?: boolean
+          oxygen_saturation?: number | null
+          patient_id: string
+          recorded_at?: string
+          respiratory_rate?: number | null
+          systolic_bp?: number | null
+          temperature?: number | null
+        }
+        Update: {
+          blood_glucose?: number | null
+          diastolic_bp?: number | null
+          heart_rate?: number | null
+          id?: string
+          is_critical?: boolean
+          oxygen_saturation?: number | null
+          patient_id?: string
+          recorded_at?: string
+          respiratory_rate?: number | null
+          systolic_bp?: number | null
+          temperature?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vitals_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "nurse"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +387,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "nurse"],
+    },
   },
 } as const
