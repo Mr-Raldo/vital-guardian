@@ -19,14 +19,29 @@ Deno.serve(async (req) => {
   const ANON_KEY    = Deno.env.get('SUPABASE_ANON_KEY')!
   const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-  // Verify caller is admin using their JWT
-  const roleRes = await fetch(`${SUPABASE_URL}/rest/v1/user_roles?select=role&limit=1`, {
-    headers: {
-      'Authorization': authHeader,
-      'apikey': ANON_KEY,
-      'Content-Type': 'application/json',
-    },
-  })
+  // Decode JWT to get the caller's user_id (the 'sub' claim)
+  let callerUserId: string
+  try {
+    const token = authHeader.replace('Bearer ', '')
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    callerUserId = payload.sub
+  } catch {
+    return new Response(JSON.stringify({ error: 'Invalid token' }), {
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Verify caller is admin using service key (bypasses RLS, checks exact user)
+  const roleRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/user_roles?user_id=eq.${callerUserId}&select=role&limit=1`,
+    {
+      headers: {
+        'Authorization': `Bearer ${SERVICE_KEY}`,
+        'apikey': SERVICE_KEY,
+        'Content-Type': 'application/json',
+      },
+    }
+  )
   const roleRows = await roleRes.json()
   if (!Array.isArray(roleRows) || roleRows[0]?.role !== 'admin') {
     return new Response(JSON.stringify({ error: 'Forbidden: admin access required' }), {
@@ -41,7 +56,7 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Create user with service role (admin API)
+  // Create auth user via admin API
   const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
     method: 'POST',
     headers: {
@@ -64,9 +79,9 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Explicitly upsert profile and user_roles (don't rely solely on DB trigger)
   if (created.id) {
-    await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+    // Upsert profile (DB trigger may have already done this)
+    const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${SERVICE_KEY}`,
@@ -76,8 +91,13 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({ user_id: created.id, full_name: fullName }),
     })
+    if (!profileRes.ok) {
+      const err = await profileRes.text()
+      console.error('Profile upsert failed:', err)
+    }
 
-    await fetch(`${SUPABASE_URL}/rest/v1/user_roles`, {
+    // Upsert user_roles with the requested role
+    const roleInsertRes = await fetch(`${SUPABASE_URL}/rest/v1/user_roles`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${SERVICE_KEY}`,
@@ -87,6 +107,10 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({ user_id: created.id, role: role ?? 'nurse' }),
     })
+    if (!roleInsertRes.ok) {
+      const err = await roleInsertRes.text()
+      console.error('user_roles upsert failed:', err)
+    }
   }
 
   return new Response(JSON.stringify({ userId: created.id }), {
