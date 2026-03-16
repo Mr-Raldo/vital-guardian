@@ -20,20 +20,29 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) return fail('Unauthorized: missing token')
-
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
   const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+  // Log all incoming headers for debugging
+  const allHeaders: Record<string, string> = {}
+  req.headers.forEach((v, k) => { allHeaders[k] = v })
+  console.log('Headers:', JSON.stringify(allHeaders))
+
+  const authHeader = req.headers.get('Authorization') ?? req.headers.get('authorization')
+  console.log('Auth header found:', !!authHeader)
+  if (!authHeader) return fail('Unauthorized: missing token')
 
   // Decode JWT to get caller's user_id
   let callerUserId: string
   try {
-    const token = authHeader.replace('Bearer ', '')
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const token = authHeader.replace('Bearer ', '').trim()
+    const parts = token.split('.')
+    const payload = JSON.parse(atob(parts[1]))
     callerUserId = payload.sub
+    console.log('Caller user_id:', callerUserId)
     if (!callerUserId) throw new Error('no sub')
-  } catch {
+  } catch (e) {
+    console.error('JWT decode error:', e)
     return fail('Unauthorized: invalid token')
   }
 
@@ -43,21 +52,37 @@ Deno.serve(async (req) => {
     { headers: { 'Authorization': `Bearer ${SERVICE_KEY}`, 'apikey': SERVICE_KEY } }
   )
   const roleRows = await roleRes.json()
-  console.log('Caller role check:', JSON.stringify(roleRows))
+  console.log('Role rows:', JSON.stringify(roleRows))
   if (!Array.isArray(roleRows) || roleRows[0]?.role !== 'admin') {
-    return fail('Forbidden: admin access required')
+    return fail(`Forbidden: caller role is "${roleRows[0]?.role ?? 'none'}"`)
   }
 
-  let body: { email?: string; password?: string; fullName?: string; role?: string }
+  // Read raw body and parse manually for debugging
+  let rawBody = ''
   try {
-    body = await req.json()
-  } catch {
-    return fail('Invalid request body')
+    rawBody = await req.text()
+    console.log('Raw body:', rawBody)
+  } catch (e) {
+    console.error('Body read error:', e)
+    return fail('Could not read request body')
   }
 
-  const { email, password, fullName, role } = body
+  let email: string, password: string, fullName: string, role: string
+  try {
+    const parsed = JSON.parse(rawBody)
+    console.log('Parsed body:', JSON.stringify(parsed))
+    email    = parsed.email
+    password = parsed.password
+    fullName = parsed.fullName
+    role     = parsed.role ?? 'nurse'
+  } catch (e) {
+    console.error('JSON parse error:', e)
+    return fail('Invalid JSON body')
+  }
+
   if (!email || !password || !fullName) {
-    return fail('email, password and fullName are required')
+    console.log('Missing fields - email:', email, 'password:', !!password, 'fullName:', fullName)
+    return fail(`Missing fields: email=${email}, fullName=${fullName}, password=${!!password}`)
   }
 
   // Create auth user via admin API
@@ -68,23 +93,17 @@ Deno.serve(async (req) => {
       'apikey': SERVICE_KEY,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { full_name: fullName },
-    }),
+    body: JSON.stringify({ email, password, email_confirm: true, user_metadata: { full_name: fullName } }),
   })
 
   const created = await createRes.json()
-  console.log('Create user response:', createRes.status, JSON.stringify(created))
+  console.log('Auth API status:', createRes.status, 'body:', JSON.stringify(created))
 
   if (!createRes.ok) {
-    return fail(created.msg ?? created.message ?? `Auth API error: ${createRes.status}`)
+    return fail(created.msg ?? created.message ?? `Auth API error ${createRes.status}`)
   }
 
   if (created.id) {
-    // Upsert profile
     const pRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: {
@@ -97,7 +116,6 @@ Deno.serve(async (req) => {
     })
     if (!pRes.ok) console.error('Profile upsert failed:', await pRes.text())
 
-    // Upsert user_roles with the requested role
     const rRes = await fetch(`${SUPABASE_URL}/rest/v1/user_roles`, {
       method: 'POST',
       headers: {
@@ -106,7 +124,7 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates,return=minimal',
       },
-      body: JSON.stringify({ user_id: created.id, role: role ?? 'nurse' }),
+      body: JSON.stringify({ user_id: created.id, role }),
     })
     if (!rRes.ok) console.error('user_roles upsert failed:', await rRes.text())
   }
