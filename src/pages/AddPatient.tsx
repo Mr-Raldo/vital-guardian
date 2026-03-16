@@ -81,7 +81,7 @@ export default function AddPatient() {
       diagnosis: form.diagnosis || null,
       notes: form.notes || null,
       // Nurse: auto-assigned to themselves. Doctor/Admin: selected nurse.
-      assigned_nurse_id: isNurse ? (user?.id ?? null) : assignedNurseId,
+      assigned_nurse_id: isNurse ? (user?.id ?? null) : (assignedNurseId || null),
     });
 
     if (error) {
