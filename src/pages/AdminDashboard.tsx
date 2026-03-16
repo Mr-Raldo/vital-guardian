@@ -123,16 +123,18 @@ export default function AdminDashboard() {
       }
 
       if (data.user) {
-        // Insert profile (trigger may have already done this)
-        await supabase.from('profiles').upsert(
-          { user_id: data.user.id, full_name: createFullName },
-          { onConflict: 'user_id' }
-        );
+        const userId = data.user.id;
 
-        // Upsert the correct role
+        // Upsert profile
+        const { error: profError } = await supabase
+          .from('profiles')
+          .upsert({ user_id: userId, full_name: createFullName }, { onConflict: 'user_id' });
+        if (profError) console.error('Profile upsert:', profError.message);
+
+        // Upsert role
         const { error: roleError } = await supabase
           .from('user_roles')
-          .upsert({ user_id: data.user.id, role: createRole }, { onConflict: 'user_id' });
+          .upsert({ user_id: userId, role: createRole }, { onConflict: 'user_id' });
 
         if (roleError) {
           toast.error('User created but role failed: ' + roleError.message);
@@ -145,6 +147,8 @@ export default function AdminDashboard() {
           setShowCreate(false);
           fetchUsers();
         }
+      } else {
+        toast.error('Signup succeeded but no user returned — check Supabase email confirmation settings');
       }
     } catch (err: unknown) {
       toast.error('Failed to create account');
