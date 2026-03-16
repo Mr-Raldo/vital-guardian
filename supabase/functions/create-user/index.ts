@@ -22,55 +22,49 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) return fail('Unauthorized: missing token')
+  const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+  const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-  const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
-  const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
-  const SERVICE_KEY       = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-  // Admin client — bypasses RLS
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
-  // Verify the caller's JWT and get their user record
-  const { data: { user: caller }, error: authErr } = await admin.auth.getUser(
-    authHeader.replace('Bearer ', '')
-  )
+  let accessToken: string, email: string, password: string, fullName: string, role: string
+  try {
+    const body = await req.json()
+    accessToken = body.accessToken
+    email       = body.email
+    password    = body.password
+    fullName    = body.fullName
+    role        = body.role ?? 'nurse'
+    console.log('Body keys:', Object.keys(body))
+  } catch (e) {
+    return fail('Invalid request body: ' + String(e))
+  }
+
+  if (!accessToken) return fail('Unauthorized: missing accessToken in body')
+
+  // Verify the caller using their access token
+  const { data: { user: caller }, error: authErr } = await admin.auth.getUser(accessToken)
   console.log('Caller:', caller?.id, '| Auth error:', authErr?.message)
   if (!caller) return fail('Unauthorized: ' + (authErr?.message ?? 'invalid token'))
 
   // Check caller is admin
-  const { data: roleRow, error: roleErr } = await admin
+  const { data: roleRow } = await admin
     .from('user_roles')
     .select('role')
     .eq('user_id', caller.id)
     .maybeSingle()
-  console.log('Role row:', JSON.stringify(roleRow), '| Role error:', roleErr?.message)
+  console.log('Role row:', JSON.stringify(roleRow))
   if (roleRow?.role !== 'admin') {
     return fail(`Forbidden: your role is "${roleRow?.role ?? 'none'}"`)
   }
 
-  // Parse body
-  let email: string, password: string, fullName: string, role: string
-  try {
-    const body = await req.json()
-    console.log('Body received:', JSON.stringify(body))
-    email    = body.email
-    password = body.password
-    fullName = body.fullName
-    role     = body.role ?? 'nurse'
-  } catch (e) {
-    console.error('Body parse error:', e)
-    return fail('Invalid request body')
-  }
-
   if (!email || !password || !fullName) {
-    return fail(`Missing fields — email:${email} fullName:${fullName} password:${!!password}`)
+    return fail(`Missing fields — email:${email} fullName:${fullName} hasPassword:${!!password}`)
   }
 
-  // Create auth user
+  // Create the new auth user
   const { data: { user: newUser }, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,

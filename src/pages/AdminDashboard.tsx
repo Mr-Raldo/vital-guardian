@@ -102,8 +102,10 @@ export default function AdminDashboard() {
     setCreating(true);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('create-user', {
         body: {
+          accessToken: session?.access_token,
           email: createEmail,
           password: createPassword,
           fullName: createFullName,
@@ -132,8 +134,9 @@ export default function AdminDashboard() {
   const handleDeleteUser = async (targetUserId: string) => {
     setDeletingUserId(targetUserId);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('delete-user', {
-        body: { userId: targetUserId },
+        body: { accessToken: session?.access_token, userId: targetUserId },
       });
       if (error || data?.error) {
         toast.error(data?.error ?? error?.message ?? 'Failed to delete user');

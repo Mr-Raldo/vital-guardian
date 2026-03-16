@@ -22,9 +22,6 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) return fail('Unauthorized: missing token')
-
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
   const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
@@ -32,10 +29,19 @@ Deno.serve(async (req) => {
     auth: { autoRefreshToken: false, persistSession: false },
   })
 
+  let accessToken: string, userId: string
+  try {
+    const body = await req.json()
+    accessToken = body.accessToken
+    userId      = body.userId
+  } catch {
+    return fail('Invalid request body')
+  }
+
+  if (!accessToken) return fail('Unauthorized: missing accessToken in body')
+
   // Verify caller
-  const { data: { user: caller }, error: authErr } = await admin.auth.getUser(
-    authHeader.replace('Bearer ', '')
-  )
+  const { data: { user: caller }, error: authErr } = await admin.auth.getUser(accessToken)
   if (!caller) return fail('Unauthorized: ' + (authErr?.message ?? 'invalid token'))
 
   // Check caller is admin
@@ -46,14 +52,6 @@ Deno.serve(async (req) => {
     .maybeSingle()
   if (roleRow?.role !== 'admin') {
     return fail(`Forbidden: your role is "${roleRow?.role ?? 'none'}"`)
-  }
-
-  let userId: string
-  try {
-    const body = await req.json()
-    userId = body.userId
-  } catch {
-    return fail('Invalid request body')
   }
 
   if (!userId) return fail('userId is required')
