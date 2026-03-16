@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppHeader } from '@/components/AppHeader';
@@ -102,29 +103,50 @@ export default function AdminDashboard() {
     setCreating(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const { data, error } = await supabase.functions.invoke('create-user', {
-        body: {
-          accessToken: session?.access_token,
-          email: createEmail,
-          password: createPassword,
-          fullName: createFullName,
-          role: createRole,
-        },
+      // Use a separate client so signUp doesn't replace the admin's session
+      const tempClient = createClient(
+        import.meta.env.VITE_SUPABASE_URL,
+        import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      );
+
+      const { data, error } = await tempClient.auth.signUp({
+        email: createEmail,
+        password: createPassword,
+        options: { data: { full_name: createFullName } },
       });
 
-      if (error || data?.error) {
-        toast.error(data?.error ?? error?.message ?? 'Failed to create account');
-      } else {
-        toast.success(`Account created for ${createFullName}`);
-        setCreateEmail('');
-        setCreatePassword('');
-        setCreateFullName('');
-        setCreateRole('nurse');
-        setShowCreate(false);
-        fetchUsers();
+      if (error) {
+        toast.error(error.message);
+        setCreating(false);
+        return;
       }
-    } catch {
+
+      if (data.user) {
+        // Insert profile (trigger may have already done this)
+        await supabase.from('profiles').upsert(
+          { user_id: data.user.id, full_name: createFullName },
+          { onConflict: 'user_id' }
+        );
+
+        // Upsert the correct role
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .upsert({ user_id: data.user.id, role: createRole }, { onConflict: 'user_id' });
+
+        if (roleError) {
+          toast.error('User created but role failed: ' + roleError.message);
+        } else {
+          toast.success(`Account created for ${createFullName}`);
+          setCreateEmail('');
+          setCreatePassword('');
+          setCreateFullName('');
+          setCreateRole('nurse');
+          setShowCreate(false);
+          fetchUsers();
+        }
+      }
+    } catch (err: unknown) {
       toast.error('Failed to create account');
     }
 
@@ -134,12 +156,9 @@ export default function AdminDashboard() {
   const handleDeleteUser = async (targetUserId: string) => {
     setDeletingUserId(targetUserId);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const { data, error } = await supabase.functions.invoke('delete-user', {
-        body: { accessToken: session?.access_token, userId: targetUserId },
-      });
-      if (error || data?.error) {
-        toast.error(data?.error ?? error?.message ?? 'Failed to delete user');
+      const { error } = await supabase.rpc('delete_auth_user', { target_user_id: targetUserId });
+      if (error) {
+        toast.error(error.message);
       } else {
         toast.success('User deleted');
         setUsers((prev) => prev.filter((u) => u.user_id !== targetUserId));
