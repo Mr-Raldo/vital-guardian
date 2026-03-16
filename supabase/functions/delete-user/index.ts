@@ -1,3 +1,5 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -26,48 +28,39 @@ Deno.serve(async (req) => {
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
   const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-  // Decode JWT to get caller's user_id
-  let callerUserId: string
-  try {
-    const token = authHeader.replace('Bearer ', '')
-    const payload = JSON.parse(atob(token.split('.')[1]))
-    callerUserId = payload.sub
-    if (!callerUserId) throw new Error('no sub')
-  } catch {
-    return fail('Unauthorized: invalid token')
-  }
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  })
 
-  // Verify caller is admin
-  const roleRes = await fetch(
-    `${SUPABASE_URL}/rest/v1/user_roles?user_id=eq.${callerUserId}&select=role&limit=1`,
-    { headers: { 'Authorization': `Bearer ${SERVICE_KEY}`, 'apikey': SERVICE_KEY } }
+  // Verify caller
+  const { data: { user: caller }, error: authErr } = await admin.auth.getUser(
+    authHeader.replace('Bearer ', '')
   )
-  const roleRows = await roleRes.json()
-  if (!Array.isArray(roleRows) || roleRows[0]?.role !== 'admin') {
-    return fail('Forbidden: admin access required')
+  if (!caller) return fail('Unauthorized: ' + (authErr?.message ?? 'invalid token'))
+
+  // Check caller is admin
+  const { data: roleRow } = await admin
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', caller.id)
+    .maybeSingle()
+  if (roleRow?.role !== 'admin') {
+    return fail(`Forbidden: your role is "${roleRow?.role ?? 'none'}"`)
   }
 
-  let body: { userId?: string }
+  let userId: string
   try {
-    body = await req.json()
+    const body = await req.json()
+    userId = body.userId
   } catch {
     return fail('Invalid request body')
   }
 
-  const { userId } = body
   if (!userId) return fail('userId is required')
-  if (userId === callerUserId) return fail('You cannot delete your own account')
+  if (userId === caller.id) return fail('You cannot delete your own account')
 
-  // Delete auth user (cascades to profiles and user_roles via FK ON DELETE CASCADE)
-  const deleteRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    method: 'DELETE',
-    headers: { 'Authorization': `Bearer ${SERVICE_KEY}`, 'apikey': SERVICE_KEY },
-  })
-
-  if (!deleteRes.ok) {
-    const err = await deleteRes.text()
-    return fail(err ?? 'Failed to delete user')
-  }
+  const { error: deleteErr } = await admin.auth.admin.deleteUser(userId)
+  if (deleteErr) return fail(deleteErr.message)
 
   return ok({ success: true })
 })
