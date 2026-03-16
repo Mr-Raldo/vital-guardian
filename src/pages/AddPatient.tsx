@@ -63,13 +63,28 @@ export default function AddPatient() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Doctors/admins must select a nurse before submitting
     if (needsNurseSelection && !assignedNurseId) {
       toast.error('Please select an assigned nurse');
       return;
     }
 
     setSubmitting(true);
+
+    // Check bed is not already occupied
+    if (form.bed_number) {
+      let bedQuery = supabase
+        .from('patients')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .eq('bed_number', form.bed_number);
+      if (form.ward) bedQuery = bedQuery.eq('ward', form.ward);
+      const { data: occupied } = await bedQuery.maybeSingle();
+      if (occupied) {
+        toast.error(`Bed ${form.bed_number}${form.ward ? ` in ${form.ward}` : ''} is already occupied by ${occupied.full_name}`);
+        setSubmitting(false);
+        return;
+      }
+    }
 
     const { error } = await supabase.from('patients').insert({
       full_name: form.full_name,

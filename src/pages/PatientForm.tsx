@@ -53,6 +53,23 @@ export default function PatientForm() {
     e.preventDefault();
     setSubmitting(true);
 
+    // Check bed is not already occupied by a different active patient
+    if (form.bed_number) {
+      let bedQuery = supabase
+        .from('patients')
+        .select('id, full_name')
+        .eq('is_active', true)
+        .eq('bed_number', form.bed_number)
+        .neq('id', id!); // exclude current patient
+      if (form.ward) bedQuery = bedQuery.eq('ward', form.ward);
+      const { data: occupied } = await bedQuery.maybeSingle();
+      if (occupied) {
+        toast.error(`Bed ${form.bed_number}${form.ward ? ` in ${form.ward}` : ''} is already occupied by ${occupied.full_name}`);
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const { error } = await supabase.from('patients').update({
       full_name: form.full_name,
       date_of_birth: form.date_of_birth,
