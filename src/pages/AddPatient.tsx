@@ -21,6 +21,7 @@ export default function AddPatient() {
   const [assignedNurseId, setAssignedNurseId] = useState<string>('');
 
   const isNurse = role === 'nurse';
+  const needsNurseSelection = role === 'admin' || role === 'doctor';
 
   const [form, setForm] = useState({
     full_name: '',
@@ -38,7 +39,7 @@ export default function AddPatient() {
 
   // Doctors and admins need to pick a nurse — fetch all nurses
   useEffect(() => {
-    if (isNurse) return;
+    if (!needsNurseSelection) return;
     const fetchNurses = async () => {
       const { data: roleRows } = await supabase
         .from('user_roles')
@@ -63,7 +64,7 @@ export default function AddPatient() {
     e.preventDefault();
 
     // Doctors/admins must select a nurse before submitting
-    if (!isNurse && !assignedNurseId) {
+    if (needsNurseSelection && !assignedNurseId) {
       toast.error('Please select an assigned nurse');
       return;
     }
@@ -190,7 +191,7 @@ export default function AddPatient() {
                 </div>
 
                 {/* Nurse assignment — only for doctors and admins */}
-                {!isNurse && (
+                {needsNurseSelection && (
                   <div className="sm:col-span-2">
                     <Label htmlFor="assigned_nurse">
                       Assign Nurse <span className="text-destructive">*</span>
