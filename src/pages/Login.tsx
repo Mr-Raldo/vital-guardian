@@ -8,11 +8,9 @@ import { Activity } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Login() {
-  const { user, loading, signIn, signUp } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const { user, loading, signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (loading) {
@@ -28,21 +26,8 @@ export default function Login() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-
-    if (isSignUp) {
-      const { error } = await signUp(email, password, fullName);
-      if (error) {
-        toast.error(error.message);
-      } else {
-        toast.success('Account created. Check your email to confirm.');
-      }
-    } else {
-      const { error } = await signIn(email, password);
-      if (error) {
-        toast.error(error.message);
-      }
-    }
-
+    const { error } = await signIn(email, password);
+    if (error) toast.error(error.message);
     setSubmitting(false);
   };
 
@@ -52,28 +37,14 @@ export default function Login() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-2">
             <Activity className="h-8 w-8 text-primary" />
-            <h1 className="text-2xl font-bold text-foreground">VitalPulse</h1>
+            <h1 className="text-2xl font-bold text-foreground">IMPMS</h1>
           </div>
-          <p className="text-sm text-muted-foreground">Real-Time Clinical Monitor</p>
+          <p className="text-sm text-muted-foreground">Intelligent Multi Parameter Patient Monitoring System</p>
+          <p className="text-xs text-muted-foreground mt-1">Contact your administrator if you need an account.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-card border border-border rounded-lg p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">
-            {isSignUp ? 'Create Account' : 'Sign In'}
-          </h2>
-
-          {isSignUp && (
-            <div className="space-y-1.5">
-              <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Dr. Jane Smith"
-                required
-              />
-            </div>
-          )}
+          <h2 className="text-lg font-semibold text-foreground">Sign In</h2>
 
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
@@ -101,19 +72,8 @@ export default function Login() {
           </div>
 
           <Button type="submit" className="w-full" disabled={submitting}>
-            {submitting ? 'Please wait...' : isSignUp ? 'Create Account' : 'Sign In'}
+            {submitting ? 'Signing in...' : 'Sign In'}
           </Button>
-
-          <p className="text-sm text-center text-muted-foreground">
-            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-            <button
-              type="button"
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-primary hover:underline font-medium"
-            >
-              {isSignUp ? 'Sign In' : 'Sign Up'}
-            </button>
-          </p>
         </form>
       </div>
     </div>
