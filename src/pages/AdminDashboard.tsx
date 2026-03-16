@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { Users, UserPlus, ShieldCheck, Stethoscope, HeartPulse, ArrowLeft, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Users, UserPlus, ShieldCheck, Stethoscope, HeartPulse, ArrowLeft, Loader2, Eye, EyeOff, Trash2 } from 'lucide-react';
 import type { Enums } from '@/integrations/supabase/types';
 
 type AppRole = Enums<'app_role'>;
@@ -39,6 +39,8 @@ export default function AdminDashboard() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [updatingRole, setUpdatingRole] = useState<string | null>(null);
+  const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   // Create account form
   const [showCreate, setShowCreate] = useState(false);
@@ -129,6 +131,27 @@ export default function AdminDashboard() {
     }
 
     setCreating(false);
+  };
+
+  const handleDeleteUser = async (targetUserId: string) => {
+    setDeletingUserId(targetUserId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const { data, error } = await supabase.functions.invoke('delete-user', {
+        body: { userId: targetUserId },
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (error || data?.error) {
+        toast.error(data?.error ?? error?.message ?? 'Failed to delete user');
+      } else {
+        toast.success('User deleted');
+        setUsers((prev) => prev.filter((u) => u.user_id !== targetUserId));
+      }
+    } catch {
+      toast.error('Failed to delete user');
+    }
+    setDeletingUserId(null);
+    setConfirmDeleteUserId(null);
   };
 
   const roleCounts = users.reduce(
@@ -311,6 +334,41 @@ export default function AdminDashboard() {
                           <SelectItem value="admin">Admin</SelectItem>
                         </SelectContent>
                       </Select>
+                    )}
+
+                    {u.user_id !== user?.id && (
+                      confirmDeleteUserId === u.user_id ? (
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 text-xs px-2"
+                            disabled={deletingUserId === u.user_id}
+                            onClick={() => handleDeleteUser(u.user_id)}
+                          >
+                            {deletingUserId === u.user_id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : 'Confirm'}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs px-2"
+                            onClick={() => setConfirmDeleteUserId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => setConfirmDeleteUserId(u.user_id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )
                     )}
                   </div>
                 </div>

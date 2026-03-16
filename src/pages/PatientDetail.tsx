@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Thermometer, Heart, Activity, Droplets, Wind, Gauge, Pencil } from 'lucide-react';
+import { ArrowLeft, Plus, Thermometer, Heart, Activity, Droplets, Wind, Gauge, Pencil, Trash2, Loader2 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
 
@@ -19,6 +19,9 @@ export default function PatientDetail() {
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const canPrescribe = role === 'doctor' || role === 'admin';
+  const isAdmin = role === 'admin';
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletingPatient, setDeletingPatient] = useState(false);
   const [patient, setPatient] = useState<Tables<'patients'> | null>(null);
   const [vitals, setVitals] = useState<Tables<'vitals'>[]>([]);
   const [treatments, setTreatments] = useState<Tables<'treatments'>[]>([]);
@@ -79,6 +82,19 @@ export default function PatientDetail() {
   const latestVital = vitals[0] ?? null;
   const isCritical = latestVital?.temperature != null && latestVital.temperature > 37;
 
+  const handleDeletePatient = async () => {
+    if (!id) return;
+    setDeletingPatient(true);
+    const { error } = await supabase.from('patients').delete().eq('id', id);
+    if (error) {
+      toast.error('Failed to delete patient');
+      setDeletingPatient(false);
+    } else {
+      toast.success('Patient deleted');
+      navigate('/');
+    }
+  };
+
   const handleAddTreatment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !user) return;
@@ -118,9 +134,38 @@ export default function PatientDetail() {
           <Button variant="ghost" onClick={() => navigate('/')}>
             <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
           </Button>
-          <Button variant="outline" size="sm" onClick={() => navigate(`/patient/${id}/edit`)}>
-            <Pencil className="h-4 w-4 mr-2" /> Edit Patient
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(`/patient/${id}/edit`)}>
+              <Pencil className="h-4 w-4 mr-2" /> Edit Patient
+            </Button>
+            {isAdmin && (
+              confirmDelete ? (
+                <div className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={deletingPatient}
+                    onClick={handleDeletePatient}
+                  >
+                    {deletingPatient ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                    Confirm Delete
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" /> Delete Patient
+                </Button>
+              )
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
