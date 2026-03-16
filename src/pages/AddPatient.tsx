@@ -1,20 +1,26 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { AppHeader } from '@/components/AppHeader';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Pencil } from 'lucide-react';
+import { ArrowLeft, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function PatientForm() {
-  const { id } = useParams<{ id: string }>();
+type NurseOption = { user_id: string; full_name: string };
+
+export default function AddPatient() {
   const navigate = useNavigate();
+  const { user, role } = useAuth();
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [nurses, setNurses] = useState<NurseOption[]>([]);
+  const [assignedNurseId, setAssignedNurseId] = useState<string>('');
+
+  const isNurse = role === 'nurse';
 
   const [form, setForm] = useState({
     full_name: '',
@@ -27,33 +33,44 @@ export default function PatientForm() {
     notes: '',
   });
 
-  useEffect(() => {
-    if (!id) return;
-    supabase.from('patients').select('*').eq('id', id).single().then(({ data }) => {
-      if (data) {
-        setForm({
-          full_name: data.full_name,
-          date_of_birth: data.date_of_birth,
-          gender: data.gender,
-          id_number: data.id_number ?? '',
-          ward: data.ward ?? '',
-          bed_number: data.bed_number ?? '',
-          diagnosis: data.diagnosis ?? '',
-          notes: data.notes ?? '',
-        });
-      }
-      setLoading(false);
-    });
-  }, [id]);
-
   const update = (field: string, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
+  // Doctors and admins need to pick a nurse — fetch all nurses
+  useEffect(() => {
+    if (isNurse) return;
+    const fetchNurses = async () => {
+      const { data: roleRows } = await supabase
+        .from('user_roles')
+        .select('user_id')
+        .eq('role', 'nurse');
+
+      if (!roleRows?.length) return;
+
+      const nurseIds = roleRows.map((r) => r.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, full_name')
+        .in('user_id', nurseIds)
+        .order('full_name');
+
+      if (profiles) setNurses(profiles);
+    };
+    fetchNurses();
+  }, [isNurse]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Doctors/admins must select a nurse before submitting
+    if (!isNurse && !assignedNurseId) {
+      toast.error('Please select an assigned nurse');
+      return;
+    }
+
     setSubmitting(true);
 
-    const { error } = await supabase.from('patients').update({
+    const { error } = await supabase.from('patients').insert({
       full_name: form.full_name,
       date_of_birth: form.date_of_birth,
       gender: form.gender,
@@ -62,46 +79,37 @@ export default function PatientForm() {
       bed_number: form.bed_number || null,
       diagnosis: form.diagnosis || null,
       notes: form.notes || null,
-    }).eq('id', id!);
+      // Nurse: auto-assigned to themselves. Doctor/Admin: selected nurse.
+      assigned_nurse_id: isNurse ? (user?.id ?? null) : assignedNurseId,
+    });
 
     if (error) {
       toast.error(error.message);
     } else {
-      toast.success('Patient updated');
-      navigate(`/patient/${id}`);
+      toast.success('Patient registered successfully');
+      navigate('/');
     }
 
     setSubmitting(false);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background">
-        <AppHeader />
-        <div className="flex items-center justify-center py-20">
-          <p className="text-muted-foreground">Loading patient...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />
       <main className="p-6 max-w-2xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate(`/patient/${id}`)} className="mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Patient
+        <Button variant="ghost" onClick={() => navigate('/')} className="mb-4">
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
         </Button>
 
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           {/* Header */}
-          <div className="bg-muted border-b border-border px-6 py-5 flex items-center gap-3">
-            <div className="bg-muted-foreground/10 rounded-full p-2">
-              <Pencil className="h-5 w-5 text-muted-foreground" />
+          <div className="bg-primary/10 border-b border-border px-6 py-5 flex items-center gap-3">
+            <div className="bg-primary/20 rounded-full p-2">
+              <UserPlus className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-foreground">Edit Patient</h2>
-              <p className="text-sm text-muted-foreground">Update patient information below</p>
+              <h2 className="text-lg font-bold text-foreground">Register New Patient</h2>
+              <p className="text-sm text-muted-foreground">Fill in all required fields to admit a new patient</p>
             </div>
           </div>
 
@@ -117,6 +125,7 @@ export default function PatientForm() {
                   <Label htmlFor="full_name">Full Name <span className="text-destructive">*</span></Label>
                   <Input
                     id="full_name"
+                    placeholder="e.g. John Doe"
                     value={form.full_name}
                     onChange={(e) => update('full_name', e.target.value)}
                     required
@@ -147,6 +156,7 @@ export default function PatientForm() {
                   <Label htmlFor="id_number">National ID / Passport Number</Label>
                   <Input
                     id="id_number"
+                    placeholder="Optional"
                     value={form.id_number}
                     onChange={(e) => update('id_number', e.target.value)}
                   />
@@ -164,6 +174,7 @@ export default function PatientForm() {
                   <Label htmlFor="ward">Ward</Label>
                   <Input
                     id="ward"
+                    placeholder="e.g. Ward A"
                     value={form.ward}
                     onChange={(e) => update('ward', e.target.value)}
                   />
@@ -172,14 +183,43 @@ export default function PatientForm() {
                   <Label htmlFor="bed_number">Bed Number</Label>
                   <Input
                     id="bed_number"
+                    placeholder="e.g. B-12"
                     value={form.bed_number}
                     onChange={(e) => update('bed_number', e.target.value)}
                   />
                 </div>
+
+                {/* Nurse assignment — only for doctors and admins */}
+                {!isNurse && (
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="assigned_nurse">
+                      Assign Nurse <span className="text-destructive">*</span>
+                    </Label>
+                    <Select value={assignedNurseId} onValueChange={setAssignedNurseId}>
+                      <SelectTrigger id="assigned_nurse">
+                        <SelectValue placeholder={nurses.length ? 'Select a nurse...' : 'No nurses registered yet'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {nurses.map((n) => (
+                          <SelectItem key={n.user_id} value={n.user_id}>
+                            {n.full_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {nurses.length === 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Create nurse accounts in the Admin panel first.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="sm:col-span-2">
                   <Label htmlFor="diagnosis">Diagnosis</Label>
                   <Textarea
                     id="diagnosis"
+                    placeholder="Primary diagnosis or reason for admission"
                     value={form.diagnosis}
                     onChange={(e) => update('diagnosis', e.target.value)}
                     rows={2}
@@ -189,6 +229,7 @@ export default function PatientForm() {
                   <Label htmlFor="notes">Additional Notes</Label>
                   <Textarea
                     id="notes"
+                    placeholder="Any additional clinical notes"
                     value={form.notes}
                     onChange={(e) => update('notes', e.target.value)}
                     rows={2}
@@ -200,9 +241,10 @@ export default function PatientForm() {
             {/* Actions */}
             <div className="flex gap-3 pt-2 border-t border-border">
               <Button type="submit" disabled={submitting} className="flex-1 sm:flex-none">
-                {submitting ? 'Saving...' : 'Save Changes'}
+                <UserPlus className="h-4 w-4 mr-2" />
+                {submitting ? 'Registering...' : 'Register Patient'}
               </Button>
-              <Button type="button" variant="outline" onClick={() => navigate(`/patient/${id}`)}>
+              <Button type="button" variant="outline" onClick={() => navigate('/')}>
                 Cancel
               </Button>
             </div>

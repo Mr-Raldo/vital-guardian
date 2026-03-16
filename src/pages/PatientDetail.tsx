@@ -10,14 +10,15 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { ArrowLeft, Plus, Thermometer, Heart, Activity, Droplets, Wind, Gauge } from 'lucide-react';
+import { ArrowLeft, Plus, Thermometer, Heart, Activity, Droplets, Wind, Gauge, Pencil } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 import { format } from 'date-fns';
 
 export default function PatientDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, role } = useAuth();
+  const canPrescribe = role === 'doctor' || role === 'admin';
   const [patient, setPatient] = useState<Tables<'patients'> | null>(null);
   const [vitals, setVitals] = useState<Tables<'vitals'>[]>([]);
   const [treatments, setTreatments] = useState<Tables<'treatments'>[]>([]);
@@ -113,9 +114,14 @@ export default function PatientDetail() {
     <div className="min-h-screen bg-background">
       <AppHeader />
       <main className="p-6 max-w-6xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate('/')} className="mb-4">
-          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
-        </Button>
+        <div className="flex items-center justify-between mb-4">
+          <Button variant="ghost" onClick={() => navigate('/')}>
+            <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/patient/${id}/edit`)}>
+            <Pencil className="h-4 w-4 mr-2" /> Edit Patient
+          </Button>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Patient Info + Vitals */}
@@ -183,9 +189,11 @@ export default function PatientDetail() {
             <div className="bg-card border border-border rounded-lg p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-muted-foreground">TREATMENTS</h3>
-                <Button size="sm" variant="outline" onClick={() => setShowAddTreatment(!showAddTreatment)}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add
-                </Button>
+                {canPrescribe && (
+                  <Button size="sm" variant="outline" onClick={() => setShowAddTreatment(!showAddTreatment)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add
+                  </Button>
+                )}
               </div>
 
               {showAddTreatment && (
